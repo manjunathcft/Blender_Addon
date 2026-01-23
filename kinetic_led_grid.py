@@ -1101,11 +1101,11 @@ class KINETIC_OT_random_animation(bpy.types.Operator):
 class KINETIC_OT_apply_led_texture(bpy.types.Operator):
     bl_idname = "kinetic.apply_led_texture"
     bl_label = "Apply LED Texture"
-    bl_description = "Applies a selected LED texture pattern to active objects"
+    bl_description = "Apply texture mapped across the entire LED grid using world positions"
     bl_options = {'REGISTER', 'UNDO'}
 
-    def create_animated_material(self, context, props, mat_name):
-        """Create or update an animated material with proper node setup"""
+    def create_animated_material(self, context, props, mat_name, min_x, max_x, min_y, max_y):
+        """Create or update an animated material using Object Info for world position mapping"""
         if mat_name in bpy.data.materials:
             mat = bpy.data.materials[mat_name]
             nodes = mat.node_tree.nodes
@@ -1131,68 +1131,57 @@ class KINETIC_OT_apply_led_texture(bpy.types.Operator):
         emission_node.location = 600, 0
         links.new(emission_node.outputs['Emission'], output_node.inputs['Surface'])
 
-        # Texture Coordinate node
-        tex_coord_node = nodes.new(type='ShaderNodeTexCoord')
-        tex_coord_node.location = -800, 0
-
-        # For unified mapping, we use World coordinates and normalize them to 0-1 based on grid bounds
+        # For unified mapping, use Object Info node to get actual world position of each LED
         if props.unified_texture_mapping:
-            # Separate XYZ from world coordinates
+            # Object Info node - gives actual world location of each object instance
+            obj_info = nodes.new(type='ShaderNodeObjectInfo')
+            obj_info.name = 'LED_Position_Info'
+            obj_info.location = -800, 0
+
+            # Separate XYZ to split the location vector
             separate_xyz = nodes.new(type='ShaderNodeSeparateXYZ')
+            separate_xyz.name = 'Split_Coords'
             separate_xyz.location = -600, 0
-            links.new(tex_coord_node.outputs['Object'], separate_xyz.inputs['Vector'])
+            links.new(obj_info.outputs['Location'], separate_xyz.inputs['Vector'])
 
-            # Calculate grid dimensions
-            grid_width = props.grid_bounds_max_x - props.grid_bounds_min_x
-            grid_height = props.grid_bounds_max_y - props.grid_bounds_min_y
+            # Map Range X - converts world X to 0-1 texture space
+            map_x = nodes.new(type='ShaderNodeMapRange')
+            map_x.name = 'Map_X'
+            map_x.location = -400, 100
+            map_x.inputs[1].default_value = min_x  # From Min
+            map_x.inputs[2].default_value = max_x  # From Max
+            map_x.inputs[3].default_value = 0.0    # To Min
+            map_x.inputs[4].default_value = 1.0    # To Max
+            links.new(separate_xyz.outputs['X'], map_x.inputs['Value'])
 
-            # Avoid division by zero
-            if grid_width == 0:
-                grid_width = 1.0
-            if grid_height == 0:
-                grid_height = 1.0
+            # Map Range Y - converts world Y to 0-1 texture space
+            map_y = nodes.new(type='ShaderNodeMapRange')
+            map_y.name = 'Map_Y'
+            map_y.location = -400, -100
+            map_y.inputs[1].default_value = min_y  # From Min
+            map_y.inputs[2].default_value = max_y  # From Max
+            map_y.inputs[3].default_value = 0.0    # To Min
+            map_y.inputs[4].default_value = 1.0    # To Max
+            links.new(separate_xyz.outputs['Y'], map_y.inputs['Value'])
 
-            # Normalize X: (x - min_x) / width
-            subtract_x = nodes.new(type='ShaderNodeMath')
-            subtract_x.operation = 'SUBTRACT'
-            subtract_x.inputs[1].default_value = props.grid_bounds_min_x
-            subtract_x.location = -450, 100
-            links.new(separate_xyz.outputs['X'], subtract_x.inputs[0])
-
-            divide_x = nodes.new(type='ShaderNodeMath')
-            divide_x.operation = 'DIVIDE'
-            divide_x.inputs[1].default_value = grid_width
-            divide_x.location = -300, 100
-            links.new(subtract_x.outputs[0], divide_x.inputs[0])
-
-            # Normalize Y: (y - min_y) / height
-            subtract_y = nodes.new(type='ShaderNodeMath')
-            subtract_y.operation = 'SUBTRACT'
-            subtract_y.inputs[1].default_value = props.grid_bounds_min_y
-            subtract_y.location = -450, -100
-            links.new(separate_xyz.outputs['Y'], subtract_y.inputs[0])
-
-            divide_y = nodes.new(type='ShaderNodeMath')
-            divide_y.operation = 'DIVIDE'
-            divide_y.inputs[1].default_value = grid_height
-            divide_y.location = -300, -100
-            links.new(subtract_y.outputs[0], divide_y.inputs[0])
-
-            # Combine back into vector
+            # Combine XYZ - combine X and Y back into a vector for the texture
             combine_xyz = nodes.new(type='ShaderNodeCombineXYZ')
-            combine_xyz.location = -150, 0
-            links.new(divide_x.outputs[0], combine_xyz.inputs['X'])
-            links.new(divide_y.outputs[0], combine_xyz.inputs['Y'])
+            combine_xyz.name = 'Texture_Vector'
+            combine_xyz.location = -200, 0
+            links.new(map_x.outputs['Result'], combine_xyz.inputs['X'])
+            links.new(map_y.outputs['Result'], combine_xyz.inputs['Y'])
             combine_xyz.inputs['Z'].default_value = 0.0
 
-            # Mapping node for additional control
+            # Mapping node for additional control (scale, rotation, offset)
             mapping_node = nodes.new(type='ShaderNodeMapping')
             mapping_node.location = 0, 0
             links.new(combine_xyz.outputs['Vector'], mapping_node.inputs['Vector'])
         else:
-            # Per-object mapping (original behavior)
+            # Per-object mapping (original behavior using texture coordinates)
+            tex_coord_node = nodes.new(type='ShaderNodeTexCoord')
+            tex_coord_node.location = -400, 0
             mapping_node = nodes.new(type='ShaderNodeMapping')
-            mapping_node.location = -400, 0
+            mapping_node.location = -200, 0
             links.new(tex_coord_node.outputs['Object'], mapping_node.inputs['Vector'])
 
         # Create texture based on type
@@ -1434,27 +1423,45 @@ class KINETIC_OT_apply_led_texture(bpy.types.Operator):
 
     def execute(self, context):
         props = context.scene.kinetic_led
-        selected_objects = context.selected_objects
+        selected_objects = [obj for obj in context.selected_objects if obj.type == 'MESH']
 
         if not selected_objects:
-            self.report({'ERROR'}, "No objects selected to apply texture.")
+            self.report({'ERROR'}, "No LED mesh objects selected to apply texture.")
             return {'CANCELLED'}
 
-        # Create material with pattern name
+        # Calculate grid bounds from selected objects
+        min_x = min([obj.location.x for obj in selected_objects])
+        max_x = max([obj.location.x for obj in selected_objects])
+        min_y = min([obj.location.y for obj in selected_objects])
+        max_y = max([obj.location.y for obj in selected_objects])
+
+        # Avoid division by zero if grid is a single line or point
+        if min_x == max_x:
+            max_x = min_x + 1.0
+        if min_y == max_y:
+            max_y = min_y + 1.0
+
+        # Update stored bounds
+        props.grid_bounds_min_x = min_x
+        props.grid_bounds_max_x = max_x
+        props.grid_bounds_min_y = min_y
+        props.grid_bounds_max_y = max_y
+        props.total_panels_created = len(selected_objects)
+
+        # Create material with pattern name, passing calculated bounds
         mat_name = f"LED_{props.led_texture_type}_Material"
-        mat = self.create_animated_material(context, props, mat_name)
+        mat = self.create_animated_material(context, props, mat_name, min_x, max_x, min_y, max_y)
 
-        applied_count = 0
+        # Apply material to all selected LED objects
         for obj in selected_objects:
-            if obj.type == 'MESH':
-                # Assign material to object
-                if obj.data.materials:
-                    obj.data.materials[0] = mat
-                else:
-                    obj.data.materials.append(mat)
-                applied_count += 1
+            if obj.data.materials:
+                obj.data.materials[0] = mat
+            else:
+                obj.data.materials.append(mat)
 
-        self.report({'INFO'}, f"Applied {props.led_texture_type} LED texture to {applied_count} objects.")
+        grid_w = max_x - min_x
+        grid_h = max_y - min_y
+        self.report({'INFO'}, f"Applied {props.led_texture_type} texture to {len(selected_objects)} LEDs | Bounds: {grid_w:.2f} x {grid_h:.2f} m")
         return {'FINISHED'}
 
 # ----------------------------------------------------
