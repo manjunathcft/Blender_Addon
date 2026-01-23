@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Kinetic LED Ceiling System",
     "author": "manManjunath",
-    "version": (2, 3, 0),
+    "version": (2, 4, 0),
     "blender": (4, 0, 0),
     "location": "View3D > N Panel > Kinetic LED",
     "description": "LED panel grid/strips with winch control, duplication, and multiple animation presets",
@@ -11,6 +11,7 @@ bl_info = {
 import bpy
 import math
 import random
+
 # ----------------------------------------------------
 # SCENE PROPERTIES
 # ----------------------------------------------------
@@ -113,134 +114,12 @@ class KineticLEDProperties(bpy.types.PropertyGroup):
     random_speed: bpy.props.FloatProperty(name="Speed", default=3.0, min=0.1, max=500.0)
     random_seed: bpy.props.IntProperty(name="Seed", default=1, min=1, max=9999)
 
-    # LED Texture settings
-    led_texture_type: bpy.props.EnumProperty(
-        name="LED Texture Type",
-        items=[
-            ('SOLID', "Solid Color", "All LEDs show a single color"),
-            ('CHECKER', "Checker Pattern", "LEDs show a checkerboard pattern"),
-            ('GRADIENT', "Gradient", "LEDs show a gradient pattern"),
-            ('WAVE_COLOR', "Wave Pattern", "Animated color waves across panels"),
-            ('PULSE', "Pulse Pattern", "Pulsing/breathing color animation"),
-            ('RAINBOW', "Rainbow Cycle", "Cycling rainbow colors animation"),
-            ('SCAN', "Scan Line", "Scanning line effect across panels"),
-            ('NOISE', "Noise Pattern", "Animated noise/static pattern"),
-            ('STROBE', "Strobe", "Flashing strobe effect"),
-            ('IMAGE', "Image Texture", "Load an image texture (UV checker, etc.)"),
-        ],
-        default='SOLID'
-    )
-
-    # Image texture settings
-    texture_image_path: bpy.props.StringProperty(
-        name="Image Path",
-        description="Path to image texture file",
-        subtype='FILE_PATH',
-        default=""
-    )
-
-    # Unified texture mapping toggle
-    unified_texture_mapping: bpy.props.BoolProperty(
-        name="Unified Mapping",
-        description="Map texture across entire grid as one continuous image instead of per-panel",
-        default=True
-    )
-
-    # Grid bounds tracking (set automatically when grid/strips are created)
-    grid_bounds_min_x: bpy.props.FloatProperty(default=0.0)
-    grid_bounds_max_x: bpy.props.FloatProperty(default=1.0)
-    grid_bounds_min_y: bpy.props.FloatProperty(default=0.0)
-    grid_bounds_max_y: bpy.props.FloatProperty(default=1.0)
-
-    # Statistics
-    total_panels_created: bpy.props.IntProperty(name="Total Panels", default=0)
-    total_strips_created: bpy.props.IntProperty(name="Total Strips", default=0)
-    color1: bpy.props.FloatVectorProperty(name="Color 1", subtype='COLOR', default=(1.0, 0.0, 0.0, 1.0), size=4)
-    color2: bpy.props.FloatVectorProperty(name="Color 2", subtype='COLOR', default=(0.0, 0.0, 1.0, 1.0), size=4)
-    checker_scale: bpy.props.FloatProperty(name="Checker Scale", default=5.0, min=1.0, max=50.0)
-    gradient_axis: bpy.props.EnumProperty(
-        name="Gradient Axis",
-        items=[
-            ('X', "X Axis", "Gradient along X axis"),
-            ('Y', "Y Axis", "Gradient along Y axis"),
-        ],
-        default='X'
-    )
-
-    # Animated texture settings
-    texture_anim_speed: bpy.props.FloatProperty(
-        name="Animation Speed",
-        default=1.0,
-        min=0.1,
-        max=10.0,
-        description="Speed of texture animation"
-    )
-    texture_scale: bpy.props.FloatProperty(
-        name="Texture Scale",
-        default=2.0,
-        min=0.1,
-        max=20.0,
-        description="Scale of the texture pattern"
-    )
-    wave_direction: bpy.props.EnumProperty(
-        name="Wave Direction",
-        items=[
-            ('X', "Horizontal", "Wave moves horizontally"),
-            ('Y', "Vertical", "Wave moves vertically"),
-            ('RADIAL', "Radial", "Wave expands from center"),
-        ],
-        default='X'
-    )
-    scan_width: bpy.props.FloatProperty(
-        name="Scan Width",
-        default=0.2,
-        min=0.05,
-        max=1.0,
-        description="Width of the scanning line"
-    )
-    emission_strength: bpy.props.FloatProperty(
-        name="Emission Strength",
-        default=5.0,
-        min=0.1,
-        max=50.0,
-        description="Brightness of LED emission"
-    )
-    
 # ----------------------------------------------------
 # UTILITY FUNCTIONS
 # ----------------------------------------------------
-def get_led_default_material():
-    mat_name = "LED_Default_Material"
-    if mat_name in bpy.data.materials:
-        return bpy.data.materials[mat_name]
-
-    mat = bpy.data.materials.new(name=mat_name)
-    mat.use_nodes = True
-    nodes = mat.node_tree.nodes
-    links = mat.node_tree.links
-
-    # Clear existing nodes
-    for node in nodes:
-        nodes.remove(node)
-
-    # Create nodes
-    output_node = nodes.new(type='ShaderNodeOutputMaterial')
-    output_node.location = 200, 0
-    emission_node = nodes.new(type='ShaderNodeEmission')
-    emission_node.inputs['Color'].default_value = (0.0, 0.0, 0.0, 1.0) # Default to black
-    emission_node.inputs['Strength'].default_value = 1.0
-    emission_node.location = 0, 0
-
-    # Link nodes
-    links.new(emission_node.outputs['Emission'], output_node.inputs['Surface'])
-
-    return mat
-
 def clear_object_animation(obj):
     """Remove all animation data and drivers from an object's Z location"""
-    # Remove drivers on location Z
     obj.driver_remove("location", 2)
-    # Clear animation data
     if obj.animation_data:
         obj.animation_data_clear()
 
@@ -253,12 +132,12 @@ def get_strip_winches():
 
     for winch in winches:
         parts = winch.name.split("_")
-        strip_key = "0"  # for original strip
+        strip_key = "0"
         winch_idx = -1
-        if len(parts) == 2:  # WINCH_i
+        if len(parts) == 2:
             strip_key = "0"
             winch_idx = int(parts[1])
-        elif len(parts) == 3:  # WINCH_dup_i
+        elif len(parts) == 3:
             strip_key = parts[1]
             winch_idx = int(parts[2])
 
@@ -266,13 +145,10 @@ def get_strip_winches():
             strip_winches[strip_key] = []
         strip_winches[strip_key].append((winch_idx, winch))
 
-    # Sort by strip index
     sorted_strip_keys = sorted(strip_winches.keys(), key=int)
-
     sorted_strip_winches = {}
     for key in sorted_strip_keys:
         winch_list = strip_winches[key]
-        # Sort by winch index within the strip
         winch_list.sort(key=lambda x: x[0])
         sorted_strip_winches[key] = winch_list
 
@@ -303,7 +179,6 @@ def animate_panels_from_winches():
                 continue
 
             winch_prefix = obj.get("winch_prefix", "")
-            
             drv = obj.driver_add("location", 2).driver
             drv.type = 'SCRIPTED'
 
@@ -317,10 +192,8 @@ def animate_panels_from_winches():
                     winch_name = f"WINCH_{winch_idx}"
 
                 var_name = f"w{winch_idx}"
-                
                 winch_obj = bpy.data.objects.get(winch_name)
                 if not winch_obj:
-                    # This could happen if a winch was deleted.
                     continue
 
                 var = drv.variables.new()
@@ -367,21 +240,7 @@ class KINETIC_OT_create_grid(bpy.types.Operator):
                     0
                 )
                 grid_coll.objects.link(inst)
-
-                # Assign default material
-                if inst.data.materials:
-                    inst.data.materials[0] = get_led_default_material()
-                else:
-                    inst.data.materials.append(get_led_default_material())
                 panel_count += 1
-
-        # Store grid bounds for unified texture mapping
-        props.grid_bounds_min_x = 0.0
-        props.grid_bounds_max_x = (props.grid_count_x - 1) * props.grid_spacing
-        props.grid_bounds_min_y = 0.0
-        props.grid_bounds_max_y = (props.grid_count_y - 1) * props.grid_spacing
-        props.total_panels_created = panel_count
-        props.total_strips_created = 0
 
         self.report({'INFO'}, f"Created LED Grid: {props.grid_count_x}x{props.grid_count_y} = {panel_count} panels")
         return {'FINISHED'}
@@ -402,31 +261,24 @@ class KINETIC_OT_create_strip(bpy.types.Operator):
             self.report({'ERROR'}, "Select one LED panel object")
             return {'CANCELLED'}
 
-        # Create collection
         strip_coll = bpy.data.collections.new("LED_STRIP")
         context.scene.collection.children.link(strip_coll)
 
-        # Calculate spacing
         display_size = props.strip_display_size
         gap = props.strip_gap
         total_spacing = display_size + gap
         count = props.strip_display_count
         total_length = (count - 1) * total_spacing
 
-        # Determine axis
         is_x_axis = props.strip_axis == 'X'
 
-        # Create winch points based on mode
         winch_positions = []
         if props.strip_winch_mode == '3_POINT':
-            # Start, Center, End
             winch_positions = [0, total_length / 2, total_length]
-        else:  # 5_POINT
-            # Start, Quarter, Center, Three-Quarter, End
+        else:
             winch_positions = [0, total_length / 4, total_length / 2,
                               3 * total_length / 4, total_length]
 
-        # Create winch empties
         winches = []
         for i, pos in enumerate(winch_positions):
             winch = bpy.data.objects.new(f"WINCH_{i}", None)
@@ -436,7 +288,6 @@ class KINETIC_OT_create_strip(bpy.types.Operator):
                 winch.location = (pos, 0, 0)
             else:
                 winch.location = (0, pos, 0)
-            # Store strip info on winch
             winch["strip_collection"] = strip_coll.name
             winch["winch_index"] = i
             winch["winch_position"] = pos
@@ -444,7 +295,6 @@ class KINETIC_OT_create_strip(bpy.types.Operator):
             strip_coll.objects.link(winch)
             winches.append(winch)
 
-        # Create LED panels with custom properties for winch relationship
         panels = []
         for i in range(count):
             inst = panel.copy()
@@ -456,13 +306,11 @@ class KINETIC_OT_create_strip(bpy.types.Operator):
             else:
                 inst.location = (0, pos, 0)
 
-            # Store panel metadata for animation
             inst["is_strip_panel"] = True
             inst["panel_position"] = pos
             inst["total_length"] = total_length
             inst["strip_collection"] = strip_coll.name
 
-            # Calculate influence weights for each winch
             norm_pos = pos / total_length if total_length > 0 else 0
             influence_data = []
             for j, winch_pos in enumerate(winch_positions):
@@ -473,32 +321,9 @@ class KINETIC_OT_create_strip(bpy.types.Operator):
                     influence = 1.0 - (distance / max_dist)
                     influence_data.append((j, influence))
 
-            # Store influence data as JSON string
             inst["winch_influences"] = str(influence_data)
-
             strip_coll.objects.link(inst)
             panels.append(inst)
-
-            # Assign default material
-            if inst.data.materials:
-                inst.data.materials[0] = get_led_default_material()
-            else:
-                inst.data.materials.append(get_led_default_material())
-
-        # Store bounds for unified texture mapping
-        if is_x_axis:
-            props.grid_bounds_min_x = 0.0
-            props.grid_bounds_max_x = total_length
-            props.grid_bounds_min_y = 0.0
-            props.grid_bounds_max_y = 0.0
-        else:
-            props.grid_bounds_min_x = 0.0
-            props.grid_bounds_max_x = 0.0
-            props.grid_bounds_min_y = 0.0
-            props.grid_bounds_max_y = total_length
-
-        props.total_panels_created = count
-        props.total_strips_created = 1
 
         self.report({'INFO'}, f"Created strip with {count} displays and {len(winches)} winches")
         return {'FINISHED'}
@@ -515,39 +340,31 @@ class KINETIC_OT_duplicate_strip(bpy.types.Operator):
     def execute(self, context):
         props = context.scene.kinetic_led
 
-        # Find existing LED_STRIP collections
         strip_colls = [c for c in bpy.data.collections if c.name.startswith("LED_STRIP")]
         if not strip_colls:
             self.report({'ERROR'}, "No LED strip found. Create a strip first.")
             return {'CANCELLED'}
 
-        # Get the first strip collection as source
         source_coll = strip_colls[0]
-
-        # Calculate offset based on strip axis and duplicate axis
         is_strip_x = props.strip_axis == 'X'
         is_dup_x = props.strip_duplicate_axis == 'X'
 
-        # Get bounds of existing strip
         all_objects = list(source_coll.objects)
         if not all_objects:
             self.report({'ERROR'}, "Strip collection is empty.")
             return {'CANCELLED'}
 
-        # Get source strip bounds
         xs = [obj.location.x for obj in all_objects]
         ys = [obj.location.y for obj in all_objects]
         min_x, max_x = min(xs), max(xs)
         min_y, max_y = min(ys), max(ys)
 
-        # Calculate strip dimensions
         strip_width_x = max_x - min_x
         strip_width_y = max_y - min_y
 
         total_duplicated = 0
 
         for dup_idx in range(1, props.strip_duplicate_count + 1):
-            # Calculate offset for this duplicate
             if is_dup_x:
                 offset_x = dup_idx * (strip_width_x + props.strip_duplicate_spacing) if is_strip_x else dup_idx * props.strip_duplicate_spacing
                 offset_y = 0 if is_strip_x else dup_idx * props.strip_duplicate_spacing
@@ -555,14 +372,11 @@ class KINETIC_OT_duplicate_strip(bpy.types.Operator):
                 offset_x = 0 if is_strip_x else dup_idx * props.strip_duplicate_spacing
                 offset_y = dup_idx * (strip_width_y + props.strip_duplicate_spacing) if not is_strip_x else dup_idx * props.strip_duplicate_spacing
 
-            # Create new collection for this duplicate
             new_coll = bpy.data.collections.new(f"LED_STRIP_{dup_idx}")
             context.scene.collection.children.link(new_coll)
 
-            # Create mapping from old winch names to new
             winch_mapping = {}
 
-            # First duplicate winches
             for obj in source_coll.objects:
                 if obj.name.startswith("WINCH_"):
                     new_obj = obj.copy()
@@ -571,7 +385,6 @@ class KINETIC_OT_duplicate_strip(bpy.types.Operator):
                         obj.location.y + offset_y,
                         obj.location.z
                     )
-                    # Update winch name to avoid conflicts
                     old_idx = obj.name.split("_")[1]
                     new_obj.name = f"WINCH_{dup_idx}_{old_idx}"
                     new_obj["strip_collection"] = new_coll.name
@@ -579,7 +392,6 @@ class KINETIC_OT_duplicate_strip(bpy.types.Operator):
                     winch_mapping[obj.name] = new_obj.name
                     total_duplicated += 1
 
-            # Then duplicate panels
             for obj in source_coll.objects:
                 if obj.get("is_strip_panel"):
                     new_obj = obj.copy()
@@ -591,13 +403,10 @@ class KINETIC_OT_duplicate_strip(bpy.types.Operator):
                     )
                     new_obj["strip_collection"] = new_coll.name
 
-                    # Update winch influences to point to new winches
                     influences_str = obj.get("winch_influences", "[]")
                     try:
                         influences = eval(influences_str)
-                        # Update winch indices for the new set
-                        new_influences = [(int(f"{dup_idx}{idx}"), inf) for idx, inf in influences]
-                        new_obj["winch_influences"] = str(influences)  # Keep original indices
+                        new_obj["winch_influences"] = str(influences)
                         new_obj["winch_prefix"] = f"{dup_idx}"
                     except:
                         pass
@@ -605,26 +414,7 @@ class KINETIC_OT_duplicate_strip(bpy.types.Operator):
                     new_coll.objects.link(new_obj)
                     total_duplicated += 1
 
-        # Update bounds to include all strips
-        all_strip_colls = [c for c in bpy.data.collections if c.name.startswith("LED_STRIP")]
-        all_positions = []
-        panel_count = 0
-        for coll in all_strip_colls:
-            for obj in coll.objects:
-                if obj.get("is_strip_panel"):
-                    all_positions.append((obj.location.x, obj.location.y))
-                    panel_count += 1
-
-        if all_positions:
-            props.grid_bounds_min_x = min(p[0] for p in all_positions)
-            props.grid_bounds_max_x = max(p[0] for p in all_positions)
-            props.grid_bounds_min_y = min(p[1] for p in all_positions)
-            props.grid_bounds_max_y = max(p[1] for p in all_positions)
-
-        props.total_panels_created = panel_count
-        props.total_strips_created = len(all_strip_colls)
-
-        self.report({'INFO'}, f"Created {props.strip_duplicate_count} duplicate strips | Total: {props.total_strips_created} strips, {panel_count} panels")
+        self.report({'INFO'}, f"Created {props.strip_duplicate_count} duplicate strips with {total_duplicated} objects")
         return {'FINISHED'}
 
 
@@ -680,7 +470,6 @@ class KINETIC_OT_winch_radial(bpy.types.Operator):
 
         clear_winch_animation()
 
-        # Calculate center of all winches
         all_positions = []
         for strip_key, winch_list in strip_winches.items():
             for winch_idx, winch in winch_list:
@@ -735,7 +524,7 @@ class KINETIC_OT_winch_ramp(bpy.types.Operator):
                     pos_val = winch.location.x + strip_idx * 0.5
                 elif props.ramp_direction == 'Y':
                     pos_val = winch.location.y + strip_idx * 0.5
-                else:  # XY diagonal
+                else:
                     pos_val = winch.location.x + winch.location.y + strip_idx * 0.5
 
                 drv.expression = (
@@ -767,7 +556,6 @@ class KINETIC_OT_winch_circular(bpy.types.Operator):
 
         clear_winch_animation()
 
-        # Calculate center of all winches
         all_positions = []
         for strip_key, winch_list in strip_winches.items():
             for winch_idx, winch in winch_list:
@@ -842,9 +630,7 @@ class KINETIC_OT_wave_animation(bpy.types.Operator):
     def execute(self, context):
         props = context.scene.kinetic_led
         for obj in context.selected_objects:
-            # Clear previous animation
             clear_object_animation(obj)
-            # Apply new driver
             drv = obj.driver_add("location", 2).driver
             drv.expression = (
                 f"{props.anim_z_offset} + sin(frame/{props.wave_speed} + "
@@ -863,9 +649,7 @@ class KINETIC_OT_radial_animation(bpy.types.Operator):
     def execute(self, context):
         props = context.scene.kinetic_led
         for obj in context.selected_objects:
-            # Clear previous animation
             clear_object_animation(obj)
-            # Apply new driver
             drv = obj.driver_add("location", 2).driver
             drv.expression = (
                 f"{props.anim_z_offset} + sin(frame/{props.radial_speed} + "
@@ -891,7 +675,7 @@ class KINETIC_OT_ramp_animation(bpy.types.Operator):
                 pos_expr = f"{obj.location.x}"
             elif props.ramp_direction == 'Y':
                 pos_expr = f"{obj.location.y}"
-            else:  # XY diagonal
+            else:
                 pos_expr = f"({obj.location.x} + {obj.location.y})"
 
             drv.expression = (
@@ -913,7 +697,6 @@ class KINETIC_OT_circular_animation(bpy.types.Operator):
         for obj in context.selected_objects:
             clear_object_animation(obj)
             drv = obj.driver_add("location", 2).driver
-            # Rotating circular pattern with multiple rings
             drv.expression = (
                 f"{props.anim_z_offset} + "
                 f"sin(frame/{props.circular_speed} + "
@@ -935,7 +718,6 @@ class KINETIC_OT_chess_animation(bpy.types.Operator):
         if not selected:
             return {'CANCELLED'}
 
-        # Get grid bounds
         xs = [obj.location.x for obj in selected]
         ys = [obj.location.y for obj in selected]
         min_x, min_y = min(xs), min(ys)
@@ -943,16 +725,13 @@ class KINETIC_OT_chess_animation(bpy.types.Operator):
 
         for obj in selected:
             clear_object_animation(obj)
-            # Calculate grid position
             grid_x = int(round((obj.location.x - min_x) / spacing))
             grid_y = int(round((obj.location.y - min_y) / spacing))
-            # Chess pattern: alternating cells
             cell_x = grid_x // props.chess_cell_size
             cell_y = grid_y // props.chess_cell_size
             is_white = (cell_x + cell_y) % 2
 
             drv = obj.driver_add("location", 2).driver
-            # Alternating up/down based on chess pattern
             if is_white:
                 drv.expression = (
                     f"{props.anim_z_offset} + "
@@ -968,7 +747,6 @@ class KINETIC_OT_chess_animation(bpy.types.Operator):
 # ----------------------------------------------------
 # TEXT ANIMATION
 # ----------------------------------------------------
-# Simple 5x3 pixel font for basic characters
 PIXEL_FONT = {
     'A': ["111", "101", "111", "101", "101"],
     'B': ["110", "101", "110", "101", "110"],
@@ -1022,7 +800,6 @@ class KINETIC_OT_text_animation(bpy.types.Operator):
         if not selected:
             return {'CANCELLED'}
 
-        # Get grid bounds
         xs = [obj.location.x for obj in selected]
         ys = [obj.location.y for obj in selected]
         min_x, min_y = min(xs), min(ys)
@@ -1032,9 +809,7 @@ class KINETIC_OT_text_animation(bpy.types.Operator):
         grid_width = int(round((max_x - min_x) / spacing)) + 1
         grid_height = int(round((max_y - min_y) / spacing)) + 1
 
-        # Build text bitmap
         text = props.text_content.upper()
-        text_width = len(text) * 4  # 3 pixels + 1 space per char
 
         for obj in selected:
             clear_object_animation(obj)
@@ -1044,16 +819,14 @@ class KINETIC_OT_text_animation(bpy.types.Operator):
             drv = obj.driver_add("location", 2).driver
 
             if props.text_scroll:
-                # Scrolling text expression
                 drv.expression = (
                     f"{props.anim_z_offset} + "
                     f"(sin(frame/{props.text_speed} + {grid_x}*0.5 + {grid_y}*0.3) > 0.5) * {props.text_amplitude}"
                 )
             else:
-                # Static text - check if this pixel should be on
                 char_idx = grid_x // 4
                 char_x = grid_x % 4
-                char_y = grid_height - 1 - grid_y  # Flip Y
+                char_y = grid_height - 1 - grid_y
 
                 is_on = 0
                 if char_idx < len(text) and char_x < 3 and 0 <= char_y < 5:
@@ -1087,7 +860,6 @@ class KINETIC_OT_random_animation(bpy.types.Operator):
         for obj in context.selected_objects:
             clear_object_animation(obj)
             drv = obj.driver_add("location", 2).driver
-            # Random phase and frequency variation per object
             phase = random.uniform(0, 6.28)
             freq_mult = random.uniform(0.5, 1.5)
             amp_mult = random.uniform(0.7, 1.3)
@@ -1097,483 +869,6 @@ class KINETIC_OT_random_animation(bpy.types.Operator):
                 f"sin(frame/{props.random_speed * freq_mult} + {phase}) * {props.random_amplitude * amp_mult}"
             )
         return {'FINISHED'}
-
-class KINETIC_OT_apply_led_texture(bpy.types.Operator):
-    bl_idname = "kinetic.apply_led_texture"
-    bl_label = "Apply LED Texture"
-    bl_description = "Apply texture mapped across the entire LED grid using world positions"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    def create_animated_material(self, context, props, mat_name, min_x, max_x, min_y, max_y):
-        """Create or update an animated material using Object Info for world position mapping"""
-        if mat_name in bpy.data.materials:
-            mat = bpy.data.materials[mat_name]
-            nodes = mat.node_tree.nodes
-            for node in nodes:
-                nodes.remove(node)
-        else:
-            mat = bpy.data.materials.new(name=mat_name)
-            mat.use_nodes = True
-            nodes = mat.node_tree.nodes
-            for node in nodes:
-                nodes.remove(node)
-
-        nodes = mat.node_tree.nodes
-        links = mat.node_tree.links
-
-        # Output node
-        output_node = nodes.new(type='ShaderNodeOutputMaterial')
-        output_node.location = 800, 0
-
-        # Emission Shader
-        emission_node = nodes.new(type='ShaderNodeEmission')
-        emission_node.inputs['Strength'].default_value = props.emission_strength
-        emission_node.location = 600, 0
-        links.new(emission_node.outputs['Emission'], output_node.inputs['Surface'])
-
-        # For unified mapping, use Object Info node to get actual world position of each LED
-        if props.unified_texture_mapping:
-            # Object Info node - gives actual world location of each object instance
-            obj_info = nodes.new(type='ShaderNodeObjectInfo')
-            obj_info.name = 'LED_Position_Info'
-            obj_info.location = -800, 0
-
-            # Separate XYZ to split the location vector
-            separate_xyz = nodes.new(type='ShaderNodeSeparateXYZ')
-            separate_xyz.name = 'Split_Coords'
-            separate_xyz.location = -600, 0
-            links.new(obj_info.outputs['Location'], separate_xyz.inputs['Vector'])
-
-            # Map Range X - converts world X to 0-1 texture space
-            map_x = nodes.new(type='ShaderNodeMapRange')
-            map_x.name = 'Map_X'
-            map_x.location = -400, 100
-            map_x.inputs[1].default_value = min_x  # From Min
-            map_x.inputs[2].default_value = max_x  # From Max
-            map_x.inputs[3].default_value = 0.0    # To Min
-            map_x.inputs[4].default_value = 1.0    # To Max
-            links.new(separate_xyz.outputs['X'], map_x.inputs['Value'])
-
-            # Map Range Y - converts world Y to 0-1 texture space
-            map_y = nodes.new(type='ShaderNodeMapRange')
-            map_y.name = 'Map_Y'
-            map_y.location = -400, -100
-            map_y.inputs[1].default_value = min_y  # From Min
-            map_y.inputs[2].default_value = max_y  # From Max
-            map_y.inputs[3].default_value = 0.0    # To Min
-            map_y.inputs[4].default_value = 1.0    # To Max
-            links.new(separate_xyz.outputs['Y'], map_y.inputs['Value'])
-
-            # Combine XYZ - combine X and Y back into a vector for the texture
-            combine_xyz = nodes.new(type='ShaderNodeCombineXYZ')
-            combine_xyz.name = 'Texture_Vector'
-            combine_xyz.location = -200, 0
-            links.new(map_x.outputs['Result'], combine_xyz.inputs['X'])
-            links.new(map_y.outputs['Result'], combine_xyz.inputs['Y'])
-            combine_xyz.inputs['Z'].default_value = 0.0
-
-            # Mapping node for additional control (scale, rotation, offset)
-            mapping_node = nodes.new(type='ShaderNodeMapping')
-            mapping_node.location = 0, 0
-            links.new(combine_xyz.outputs['Vector'], mapping_node.inputs['Vector'])
-        else:
-            # Per-object mapping (original behavior using texture coordinates)
-            tex_coord_node = nodes.new(type='ShaderNodeTexCoord')
-            tex_coord_node.location = -400, 0
-            mapping_node = nodes.new(type='ShaderNodeMapping')
-            mapping_node.location = -200, 0
-            links.new(tex_coord_node.outputs['Object'], mapping_node.inputs['Vector'])
-
-        # Create texture based on type
-        if props.led_texture_type == 'SOLID':
-            emission_node.inputs['Color'].default_value = props.color1
-
-        elif props.led_texture_type == 'CHECKER':
-            checker_node = nodes.new(type='ShaderNodeTexChecker')
-            checker_node.inputs['Color1'].default_value = props.color1
-            checker_node.inputs['Color2'].default_value = props.color2
-            checker_node.inputs['Scale'].default_value = props.checker_scale
-            checker_node.location = 0, 0
-            links.new(mapping_node.outputs['Vector'], checker_node.inputs['Vector'])
-            links.new(checker_node.outputs['Color'], emission_node.inputs['Color'])
-
-        elif props.led_texture_type == 'GRADIENT':
-            gradient_node = nodes.new(type='ShaderNodeTexGradient')
-            gradient_node.gradient_type = 'LINEAR'
-            gradient_node.location = -200, 0
-            links.new(mapping_node.outputs['Vector'], gradient_node.inputs['Vector'])
-
-            color_ramp_node = nodes.new(type='ShaderNodeValToRGB')
-            color_ramp_node.location = 0, 0
-            color_ramp_node.color_ramp.elements[0].color = props.color1
-            color_ramp_node.color_ramp.elements[1].color = props.color2
-            links.new(gradient_node.outputs['Fac'], color_ramp_node.inputs['Fac'])
-            links.new(color_ramp_node.outputs['Color'], emission_node.inputs['Color'])
-
-            if props.gradient_axis == 'X':
-                mapping_node.inputs['Rotation'].default_value[1] = math.radians(90)
-            elif props.gradient_axis == 'Y':
-                mapping_node.inputs['Rotation'].default_value[0] = math.radians(90)
-
-        elif props.led_texture_type == 'WAVE_COLOR':
-            # Animated wave pattern using wave texture with driver
-            wave_node = nodes.new(type='ShaderNodeTexWave')
-            wave_node.wave_type = 'BANDS'
-            wave_node.bands_direction = 'X' if props.wave_direction == 'X' else 'Y'
-            if props.wave_direction == 'RADIAL':
-                wave_node.wave_type = 'RINGS'
-            wave_node.inputs['Scale'].default_value = props.texture_scale
-            wave_node.inputs['Distortion'].default_value = 2.0
-            wave_node.inputs['Detail'].default_value = 2.0
-            wave_node.location = -200, 0
-            links.new(mapping_node.outputs['Vector'], wave_node.inputs['Vector'])
-
-            # Add driver to Phase Offset for animation
-            driver = wave_node.inputs['Phase Offset'].driver_add('default_value').driver
-            driver.type = 'SCRIPTED'
-            driver.expression = f"frame / 24 * {props.texture_anim_speed}"
-
-            color_ramp_node = nodes.new(type='ShaderNodeValToRGB')
-            color_ramp_node.location = 0, 0
-            color_ramp_node.color_ramp.elements[0].color = props.color1
-            color_ramp_node.color_ramp.elements[1].color = props.color2
-            links.new(wave_node.outputs['Fac'], color_ramp_node.inputs['Fac'])
-            links.new(color_ramp_node.outputs['Color'], emission_node.inputs['Color'])
-
-        elif props.led_texture_type == 'PULSE':
-            # Pulsing/breathing effect using math nodes with driver
-            value_node = nodes.new(type='ShaderNodeValue')
-            value_node.location = -200, 200
-
-            # Add driver for pulsing animation
-            driver = value_node.outputs[0].driver_add('default_value').driver
-            driver.type = 'SCRIPTED'
-            driver.expression = f"(sin(frame / 24 * {props.texture_anim_speed} * 3.14159 * 2) + 1) / 2"
-
-            # Mix between color1 and color2 based on pulse value
-            mix_node = nodes.new(type='ShaderNodeMix')
-            mix_node.data_type = 'RGBA'
-            mix_node.location = 100, 0
-            mix_node.inputs[6].default_value = props.color1  # A color
-            mix_node.inputs[7].default_value = props.color2  # B color
-            links.new(value_node.outputs[0], mix_node.inputs['Factor'])
-            links.new(mix_node.outputs[2], emission_node.inputs['Color'])
-
-        elif props.led_texture_type == 'RAINBOW':
-            # Rainbow cycling using HSV with animated hue
-            separate_xyz = nodes.new(type='ShaderNodeSeparateXYZ')
-            separate_xyz.location = -200, 0
-            links.new(mapping_node.outputs['Vector'], separate_xyz.inputs['Vector'])
-
-            # Animated hue offset value
-            hue_offset = nodes.new(type='ShaderNodeValue')
-            hue_offset.location = -200, 200
-            driver = hue_offset.outputs[0].driver_add('default_value').driver
-            driver.type = 'SCRIPTED'
-            driver.expression = f"(frame / 24 * {props.texture_anim_speed}) % 1"
-
-            # Add position-based hue + animated offset
-            math_add = nodes.new(type='ShaderNodeMath')
-            math_add.operation = 'ADD'
-            math_add.location = 0, 100
-            links.new(separate_xyz.outputs['X'], math_add.inputs[0])
-            links.new(hue_offset.outputs[0], math_add.inputs[1])
-
-            # Scale the position
-            math_mult = nodes.new(type='ShaderNodeMath')
-            math_mult.operation = 'MULTIPLY'
-            math_mult.inputs[1].default_value = props.texture_scale * 0.1
-            math_mult.location = 0, 0
-            links.new(math_add.outputs[0], math_mult.inputs[0])
-
-            # Fract to wrap hue
-            math_fract = nodes.new(type='ShaderNodeMath')
-            math_fract.operation = 'FRACT'
-            math_fract.location = 150, 0
-            links.new(math_mult.outputs[0], math_fract.inputs[0])
-
-            # Combine HSV (Hue from animation, full Saturation, full Value)
-            combine_hsv = nodes.new(type='ShaderNodeCombineHSV')
-            combine_hsv.location = 300, 0
-            combine_hsv.inputs['S'].default_value = 1.0
-            combine_hsv.inputs['V'].default_value = 1.0
-            links.new(math_fract.outputs[0], combine_hsv.inputs['H'])
-            links.new(combine_hsv.outputs['Color'], emission_node.inputs['Color'])
-
-        elif props.led_texture_type == 'SCAN':
-            # Scanning line effect
-            separate_xyz = nodes.new(type='ShaderNodeSeparateXYZ')
-            separate_xyz.location = -200, 0
-            links.new(mapping_node.outputs['Vector'], separate_xyz.inputs['Vector'])
-
-            # Animated scan position
-            scan_pos = nodes.new(type='ShaderNodeValue')
-            scan_pos.location = -200, 200
-            driver = scan_pos.outputs[0].driver_add('default_value').driver
-            driver.type = 'SCRIPTED'
-            driver.expression = f"(frame / 24 * {props.texture_anim_speed}) % 2 - 1"
-
-            # Distance from scan line
-            math_sub = nodes.new(type='ShaderNodeMath')
-            math_sub.operation = 'SUBTRACT'
-            math_sub.location = 0, 100
-            out_axis = 'X' if props.wave_direction != 'Y' else 'Y'
-            links.new(separate_xyz.outputs[out_axis], math_sub.inputs[0])
-            links.new(scan_pos.outputs[0], math_sub.inputs[1])
-
-            # Absolute value
-            math_abs = nodes.new(type='ShaderNodeMath')
-            math_abs.operation = 'ABSOLUTE'
-            math_abs.location = 150, 100
-            links.new(math_sub.outputs[0], math_abs.inputs[0])
-
-            # Compare to scan width
-            math_less = nodes.new(type='ShaderNodeMath')
-            math_less.operation = 'LESS_THAN'
-            math_less.inputs[1].default_value = props.scan_width
-            math_less.location = 300, 100
-            links.new(math_abs.outputs[0], math_less.inputs[0])
-
-            # Mix colors based on scan position
-            mix_node = nodes.new(type='ShaderNodeMix')
-            mix_node.data_type = 'RGBA'
-            mix_node.location = 200, 0
-            mix_node.inputs[6].default_value = props.color2  # Background
-            mix_node.inputs[7].default_value = props.color1  # Scan line color
-            links.new(math_less.outputs[0], mix_node.inputs['Factor'])
-            links.new(mix_node.outputs[2], emission_node.inputs['Color'])
-
-        elif props.led_texture_type == 'NOISE':
-            # Animated noise pattern
-            noise_node = nodes.new(type='ShaderNodeTexNoise')
-            noise_node.inputs['Scale'].default_value = props.texture_scale
-            noise_node.inputs['Detail'].default_value = 4.0
-            noise_node.location = -100, 0
-            links.new(mapping_node.outputs['Vector'], noise_node.inputs['Vector'])
-
-            # Animate W dimension for noise evolution
-            driver = noise_node.inputs['W'].driver_add('default_value').driver
-            driver.type = 'SCRIPTED'
-            driver.expression = f"frame / 24 * {props.texture_anim_speed}"
-            noise_node.noise_dimensions = '4D'
-
-            color_ramp_node = nodes.new(type='ShaderNodeValToRGB')
-            color_ramp_node.location = 100, 0
-            color_ramp_node.color_ramp.elements[0].color = props.color1
-            color_ramp_node.color_ramp.elements[1].color = props.color2
-            links.new(noise_node.outputs['Fac'], color_ramp_node.inputs['Fac'])
-            links.new(color_ramp_node.outputs['Color'], emission_node.inputs['Color'])
-
-        elif props.led_texture_type == 'STROBE':
-            # Strobe/flash effect
-            value_node = nodes.new(type='ShaderNodeValue')
-            value_node.location = 200, 0
-
-            # Add driver for strobe (on/off based on frame)
-            driver = value_node.outputs[0].driver_add('default_value').driver
-            driver.type = 'SCRIPTED'
-            driver.expression = f"1 if (int(frame / 24 * {props.texture_anim_speed} * 10) % 2) == 0 else 0"
-
-            mix_node = nodes.new(type='ShaderNodeMix')
-            mix_node.data_type = 'RGBA'
-            mix_node.location = 400, 0
-            mix_node.inputs[6].default_value = (0, 0, 0, 1)  # Off state (black)
-            mix_node.inputs[7].default_value = props.color1  # On state
-            links.new(value_node.outputs[0], mix_node.inputs['Factor'])
-            links.new(mix_node.outputs[2], emission_node.inputs['Color'])
-
-        elif props.led_texture_type == 'IMAGE':
-            # Image texture (UV checker, custom image, etc.)
-            image_node = nodes.new(type='ShaderNodeTexImage')
-            image_node.location = 200, 0
-            image_loaded = False
-
-            # First check for generated UV checker
-            if "UV_Checker_Generated" in bpy.data.images:
-                image_node.image = bpy.data.images["UV_Checker_Generated"]
-                image_loaded = True
-            # Then try to load from path
-            elif props.texture_image_path:
-                import os
-                abs_path = bpy.path.abspath(props.texture_image_path)
-                if os.path.exists(abs_path):
-                    # Check if image already loaded
-                    img_name = os.path.basename(abs_path)
-                    if img_name in bpy.data.images:
-                        image_node.image = bpy.data.images[img_name]
-                    else:
-                        image_node.image = bpy.data.images.load(abs_path)
-                    image_loaded = True
-
-            if not image_loaded:
-                # Create a default UV checker pattern procedurally
-                checker_node = nodes.new(type='ShaderNodeTexChecker')
-                checker_node.inputs['Scale'].default_value = 8.0
-                checker_node.inputs['Color1'].default_value = (1.0, 0.0, 1.0, 1.0)  # Magenta
-                checker_node.inputs['Color2'].default_value = (0.0, 0.0, 0.0, 1.0)  # Black
-                checker_node.location = 200, 0
-                links.new(mapping_node.outputs['Vector'], checker_node.inputs['Vector'])
-                links.new(checker_node.outputs['Color'], emission_node.inputs['Color'])
-                return mat
-
-            links.new(mapping_node.outputs['Vector'], image_node.inputs['Vector'])
-            links.new(image_node.outputs['Color'], emission_node.inputs['Color'])
-
-        return mat
-
-    def execute(self, context):
-        props = context.scene.kinetic_led
-        selected_objects = [obj for obj in context.selected_objects if obj.type == 'MESH']
-
-        if not selected_objects:
-            self.report({'ERROR'}, "No LED mesh objects selected to apply texture.")
-            return {'CANCELLED'}
-
-        # Calculate grid bounds from selected objects
-        min_x = min([obj.location.x for obj in selected_objects])
-        max_x = max([obj.location.x for obj in selected_objects])
-        min_y = min([obj.location.y for obj in selected_objects])
-        max_y = max([obj.location.y for obj in selected_objects])
-
-        # Avoid division by zero if grid is a single line or point
-        if min_x == max_x:
-            max_x = min_x + 1.0
-        if min_y == max_y:
-            max_y = min_y + 1.0
-
-        # Update stored bounds
-        props.grid_bounds_min_x = min_x
-        props.grid_bounds_max_x = max_x
-        props.grid_bounds_min_y = min_y
-        props.grid_bounds_max_y = max_y
-        props.total_panels_created = len(selected_objects)
-
-        # Create material with pattern name, passing calculated bounds
-        mat_name = f"LED_{props.led_texture_type}_Material"
-        mat = self.create_animated_material(context, props, mat_name, min_x, max_x, min_y, max_y)
-
-        # Apply material to all selected LED objects
-        for obj in selected_objects:
-            if obj.data.materials:
-                obj.data.materials[0] = mat
-            else:
-                obj.data.materials.append(mat)
-
-        grid_w = max_x - min_x
-        grid_h = max_y - min_y
-        self.report({'INFO'}, f"Applied {props.led_texture_type} texture to {len(selected_objects)} LEDs | Bounds: {grid_w:.2f} x {grid_h:.2f} m")
-        return {'FINISHED'}
-
-# ----------------------------------------------------
-# RECALCULATE BOUNDS FROM SELECTION
-# ----------------------------------------------------
-class KINETIC_OT_recalculate_bounds(bpy.types.Operator):
-    bl_idname = "kinetic.recalculate_bounds"
-    bl_label = "Recalculate Bounds"
-    bl_description = "Recalculate grid bounds from selected objects for unified texture mapping"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    def execute(self, context):
-        props = context.scene.kinetic_led
-        selected = context.selected_objects
-
-        if not selected:
-            self.report({'ERROR'}, "No objects selected")
-            return {'CANCELLED'}
-
-        xs = [obj.location.x for obj in selected]
-        ys = [obj.location.y for obj in selected]
-
-        props.grid_bounds_min_x = min(xs)
-        props.grid_bounds_max_x = max(xs)
-        props.grid_bounds_min_y = min(ys)
-        props.grid_bounds_max_y = max(ys)
-        props.total_panels_created = len(selected)
-
-        grid_w = props.grid_bounds_max_x - props.grid_bounds_min_x
-        grid_h = props.grid_bounds_max_y - props.grid_bounds_min_y
-
-        self.report({'INFO'}, f"Bounds recalculated: {grid_w:.2f} x {grid_h:.2f} m from {len(selected)} objects")
-        return {'FINISHED'}
-
-
-# ----------------------------------------------------
-# GENERATE UV CHECKER TEXTURE
-# ----------------------------------------------------
-class KINETIC_OT_download_uv_checker(bpy.types.Operator):
-    bl_idname = "kinetic.download_uv_checker"
-    bl_label = "Generate UV Checker"
-    bl_description = "Generate a UV checker texture for testing UV mapping"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    def execute(self, context):
-        props = context.scene.kinetic_led
-
-        # Create a UV checker image procedurally
-        img_name = "UV_Checker_Generated"
-        size = 1024  # 1K resolution
-
-        # Check if image already exists
-        if img_name in bpy.data.images:
-            img = bpy.data.images[img_name]
-            bpy.data.images.remove(img)
-
-        # Create new image
-        img = bpy.data.images.new(img_name, width=size, height=size)
-
-        # Generate UV checker pattern
-        pixels = []
-        grid_size = 8  # 8x8 checker grid
-        cell_size = size // grid_size
-
-        # Colors for the UV checker pattern
-        colors = [
-            (1.0, 0.0, 0.0, 1.0),    # Red
-            (0.0, 1.0, 0.0, 1.0),    # Green
-            (0.0, 0.0, 1.0, 1.0),    # Blue
-            (1.0, 1.0, 0.0, 1.0),    # Yellow
-            (1.0, 0.0, 1.0, 1.0),    # Magenta
-            (0.0, 1.0, 1.0, 1.0),    # Cyan
-            (1.0, 0.5, 0.0, 1.0),    # Orange
-            (0.5, 0.0, 1.0, 1.0),    # Purple
-        ]
-
-        for y in range(size):
-            for x in range(size):
-                cell_x = x // cell_size
-                cell_y = y // cell_size
-
-                # Checker pattern with different colors per row
-                if (cell_x + cell_y) % 2 == 0:
-                    color = colors[cell_y % len(colors)]
-                else:
-                    # Darker shade of the color
-                    base_color = colors[cell_y % len(colors)]
-                    color = (base_color[0] * 0.3, base_color[1] * 0.3, base_color[2] * 0.3, 1.0)
-
-                # Add grid lines
-                local_x = x % cell_size
-                local_y = y % cell_size
-                if local_x < 2 or local_y < 2 or local_x >= cell_size - 2 or local_y >= cell_size - 2:
-                    color = (0.2, 0.2, 0.2, 1.0)  # Dark gray grid lines
-
-                # Add coordinate labels in center of each cell
-                center_x = cell_size // 2
-                center_y = cell_size // 2
-                if abs(local_x - center_x) < 15 and abs(local_y - center_y) < 15:
-                    color = (1.0, 1.0, 1.0, 1.0)  # White center marker
-
-                pixels.extend(color)
-
-        img.pixels = pixels
-        img.pack()
-
-        # Save path reference
-        props.texture_image_path = f"//UV_Checker_Generated"
-
-        self.report({'INFO'}, f"Generated UV Checker texture: {img_name} ({size}x{size})")
-        return {'FINISHED'}
-
 
 # ----------------------------------------------------
 # CLEAR ANIMATION
@@ -1588,7 +883,6 @@ class KINETIC_OT_clear_animation(bpy.types.Operator):
         count = 0
         for obj in context.selected_objects:
             clear_object_animation(obj)
-            # Reset Z location to 0
             obj.location.z = 0
             count += 1
         self.report({'INFO'}, f"Cleared animation from {count} objects")
@@ -1606,28 +900,22 @@ class KINETIC_OT_clear_all(bpy.types.Operator):
     def execute(self, context):
         removed_count = 0
 
-        # Find and remove LED_GRID and LED_STRIP collections
         collections_to_remove = []
         for coll in bpy.data.collections:
             if coll.name.startswith("LED_GRID") or coll.name.startswith("LED_STRIP"):
                 collections_to_remove.append(coll)
 
         for coll in collections_to_remove:
-            # Remove all objects in the collection
             for obj in list(coll.objects):
-                # Clear constraints first
                 obj.constraints.clear()
-                # Clear animation
                 clear_object_animation(obj)
                 bpy.data.objects.remove(obj, do_unlink=True)
                 removed_count += 1
-            # Remove the collection
             bpy.data.collections.remove(coll)
 
-        # Remove any remaining cables, anchors, and winches
         objects_to_remove = []
         for obj in bpy.data.objects:
-            if obj.name.startswith("WINCH_") and "winch_index" in obj: # Only remove actual winches
+            if obj.name.startswith("WINCH_") and "winch_index" in obj:
                 objects_to_remove.append(obj)
 
         for obj in objects_to_remove:
@@ -1635,7 +923,6 @@ class KINETIC_OT_clear_all(bpy.types.Operator):
             bpy.data.objects.remove(obj, do_unlink=True)
             removed_count += 1
 
-        # Clear animation from any remaining selected objects
         for obj in context.selected_objects:
             clear_object_animation(obj)
             obj.constraints.clear()
@@ -1645,10 +932,9 @@ class KINETIC_OT_clear_all(bpy.types.Operator):
         return {'FINISHED'}
 
 # ----------------------------------------------------
-# UI PANELS (Collapsible Sub-panels)
+# UI PANELS
 # ----------------------------------------------------
 
-# Main Panel
 class KINETIC_PT_main(bpy.types.Panel):
     bl_label = "Kinetic LED Ceiling"
     bl_idname = "KINETIC_PT_main"
@@ -1661,7 +947,6 @@ class KINETIC_PT_main(bpy.types.Panel):
         props = context.scene.kinetic_led
         layout.prop(props, "system_mode", expand=True)
 
-# Grid Settings Sub-panel
 class KINETIC_PT_grid(bpy.types.Panel):
     bl_label = "Grid Settings"
     bl_idname = "KINETIC_PT_grid"
@@ -1686,7 +971,6 @@ class KINETIC_PT_grid(bpy.types.Panel):
         col.prop(props, "grid_spacing")
         layout.operator("kinetic.create_grid")
 
-# Strip Setup Sub-panel
 class KINETIC_PT_strip(bpy.types.Panel):
     bl_label = "Strip Setup (Winch Control)"
     bl_idname = "KINETIC_PT_strip"
@@ -1717,7 +1001,6 @@ class KINETIC_PT_strip(bpy.types.Panel):
         layout.separator()
         layout.operator("kinetic.create_strip", icon='ADD')
 
-        # Duplication settings
         box = layout.box()
         box.label(text="Duplicate Strip", icon='MOD_ARRAY')
         col = box.column(align=True)
@@ -1726,10 +1009,6 @@ class KINETIC_PT_strip(bpy.types.Panel):
         col.prop(props, "strip_duplicate_spacing")
         box.operator("kinetic.duplicate_strip", icon='DUPLICATE')
 
-        layout.separator()
-
-
-# Animation Settings Sub-panel
 class KINETIC_PT_anim_settings(bpy.types.Panel):
     bl_label = "Animation Settings"
     bl_idname = "KINETIC_PT_anim_settings"
@@ -1748,7 +1027,6 @@ class KINETIC_PT_anim_settings(bpy.types.Panel):
         col.prop(props, "anim_z_offset")
         layout.operator("kinetic.clear_animation", icon='X')
 
-# Wave Sub-panel
 class KINETIC_PT_wave(bpy.types.Panel):
     bl_label = "Wave"
     bl_idname = "KINETIC_PT_wave"
@@ -1773,7 +1051,6 @@ class KINETIC_PT_wave(bpy.types.Panel):
         col.prop(props, "wave_speed")
         layout.operator("kinetic.wave_animation")
 
-# Radial Sub-panel
 class KINETIC_PT_radial(bpy.types.Panel):
     bl_label = "Radial"
     bl_idname = "KINETIC_PT_radial"
@@ -1798,7 +1075,6 @@ class KINETIC_PT_radial(bpy.types.Panel):
         col.prop(props, "radial_speed")
         layout.operator("kinetic.radial_animation")
 
-# Ramp Sub-panel
 class KINETIC_PT_ramp(bpy.types.Panel):
     bl_label = "Ramp"
     bl_idname = "KINETIC_PT_ramp"
@@ -1824,7 +1100,6 @@ class KINETIC_PT_ramp(bpy.types.Panel):
         col.prop(props, "ramp_direction")
         layout.operator("kinetic.ramp_animation")
 
-# Circular Sub-panel
 class KINETIC_PT_circular(bpy.types.Panel):
     bl_label = "Circular"
     bl_idname = "KINETIC_PT_circular"
@@ -1850,7 +1125,6 @@ class KINETIC_PT_circular(bpy.types.Panel):
         col.prop(props, "circular_rings")
         layout.operator("kinetic.circular_animation")
 
-# Chess Sub-panel
 class KINETIC_PT_chess(bpy.types.Panel):
     bl_label = "Chess"
     bl_idname = "KINETIC_PT_chess"
@@ -1876,7 +1150,6 @@ class KINETIC_PT_chess(bpy.types.Panel):
         col.prop(props, "chess_cell_size")
         layout.operator("kinetic.chess_animation")
 
-# Text Sub-panel
 class KINETIC_PT_text(bpy.types.Panel):
     bl_label = "Text"
     bl_idname = "KINETIC_PT_text"
@@ -1903,7 +1176,6 @@ class KINETIC_PT_text(bpy.types.Panel):
         col.prop(props, "text_scroll")
         layout.operator("kinetic.text_animation")
 
-# Random Sub-panel
 class KINETIC_PT_random(bpy.types.Panel):
     bl_label = "Random"
     bl_idname = "KINETIC_PT_random"
@@ -1929,7 +1201,6 @@ class KINETIC_PT_random(bpy.types.Panel):
         col.prop(props, "random_seed")
         layout.operator("kinetic.random_animation")
 
-# Winch Animation Patterns Panel
 class KINETIC_PT_winch_patterns(bpy.types.Panel):
     bl_label = "Winch Animation Patterns"
     bl_idname = "KINETIC_PT_winch_patterns"
@@ -1947,7 +1218,6 @@ class KINETIC_PT_winch_patterns(bpy.types.Panel):
         layout = self.layout
         props = context.scene.kinetic_led
 
-        # Wave
         box = layout.box()
         box.label(text="Wave", icon='MOD_WAVE')
         col = box.column(align=True)
@@ -1955,7 +1225,6 @@ class KINETIC_PT_winch_patterns(bpy.types.Panel):
         col.prop(props, "wave_speed")
         box.operator("kinetic.winch_wave")
 
-        # Radial
         box = layout.box()
         box.label(text="Radial", icon='FORCE_VORTEX')
         col = box.column(align=True)
@@ -1963,7 +1232,6 @@ class KINETIC_PT_winch_patterns(bpy.types.Panel):
         col.prop(props, "radial_speed")
         box.operator("kinetic.winch_radial")
 
-        # Ramp
         box = layout.box()
         box.label(text="Ramp", icon='SORT_ASC')
         col = box.column(align=True)
@@ -1972,7 +1240,6 @@ class KINETIC_PT_winch_patterns(bpy.types.Panel):
         col.prop(props, "ramp_direction")
         box.operator("kinetic.winch_ramp")
 
-        # Circular
         box = layout.box()
         box.label(text="Circular", icon='MESH_CIRCLE')
         col = box.column(align=True)
@@ -1981,7 +1248,6 @@ class KINETIC_PT_winch_patterns(bpy.types.Panel):
         col.prop(props, "circular_rings")
         box.operator("kinetic.winch_circular")
 
-        # Random
         box = layout.box()
         box.label(text="Random", icon='PARTICLE_DATA')
         col = box.column(align=True)
@@ -1990,85 +1256,6 @@ class KINETIC_PT_winch_patterns(bpy.types.Panel):
         col.prop(props, "random_seed")
         box.operator("kinetic.winch_random")
 
-# LED Textures Sub-panel
-class KINETIC_PT_led_textures(bpy.types.Panel):
-    bl_label = "LED Textures"
-    bl_idname = "KINETIC_PT_led_textures"
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category = 'Kinetic LED'
-    bl_parent_id = "KINETIC_PT_main"
-    bl_options = {'DEFAULT_CLOSED'}
-
-    def draw_header(self, context):
-        self.layout.label(text="", icon='MATERIAL')
-
-    def draw(self, context):
-        layout = self.layout
-        props = context.scene.kinetic_led
-
-        # Statistics box
-        box = layout.box()
-        box.label(text="Current Setup:", icon='INFO')
-        if props.total_strips_created > 0:
-            box.label(text=f"Strips: {props.total_strips_created}")
-        box.label(text=f"Panels: {props.total_panels_created}")
-        grid_w = props.grid_bounds_max_x - props.grid_bounds_min_x
-        grid_h = props.grid_bounds_max_y - props.grid_bounds_min_y
-        box.label(text=f"Bounds: {grid_w:.2f} x {grid_h:.2f} m")
-        box.operator("kinetic.recalculate_bounds", icon='FILE_REFRESH', text="Recalculate from Selection")
-
-        layout.separator()
-        layout.prop(props, "led_texture_type")
-
-        # Unified mapping toggle
-        layout.prop(props, "unified_texture_mapping")
-
-        # Image texture settings
-        if props.led_texture_type == 'IMAGE':
-            box = layout.box()
-            box.label(text="Image Texture:", icon='IMAGE_DATA')
-            box.prop(props, "texture_image_path", text="")
-            box.operator("kinetic.download_uv_checker", icon='URL', text="Generate UV Checker")
-
-        # Color settings
-        if props.led_texture_type != 'IMAGE':
-            box = layout.box()
-            box.label(text="Colors:", icon='COLOR')
-            col = box.column(align=True)
-            col.prop(props, "color1")
-            if props.led_texture_type not in ['SOLID', 'RAINBOW', 'STROBE']:
-                col.prop(props, "color2")
-
-        # Pattern-specific settings
-        if props.led_texture_type == 'CHECKER':
-            layout.prop(props, "checker_scale")
-        elif props.led_texture_type == 'GRADIENT':
-            layout.prop(props, "gradient_axis")
-        elif props.led_texture_type in ['WAVE_COLOR', 'SCAN']:
-            box = layout.box()
-            box.label(text="Wave Settings:", icon='MOD_WAVE')
-            box.prop(props, "wave_direction")
-            if props.led_texture_type == 'SCAN':
-                box.prop(props, "scan_width")
-
-        # Animation settings for animated patterns
-        if props.led_texture_type in ['WAVE_COLOR', 'PULSE', 'RAINBOW', 'SCAN', 'NOISE', 'STROBE']:
-            box = layout.box()
-            box.label(text="Animation:", icon='ANIM')
-            col = box.column(align=True)
-            col.prop(props, "texture_anim_speed")
-            if props.led_texture_type in ['WAVE_COLOR', 'RAINBOW', 'NOISE']:
-                col.prop(props, "texture_scale")
-
-        # Emission settings
-        layout.prop(props, "emission_strength")
-
-        # Apply button
-        layout.separator()
-        layout.operator("kinetic.apply_led_texture", icon='TEXTURE', text="Apply Texture to Selection")
-
-# Cleanup Sub-panel
 class KINETIC_PT_cleanup(bpy.types.Panel):
     bl_label = "Cleanup"
     bl_idname = "KINETIC_PT_cleanup"
@@ -2092,13 +1279,11 @@ classes = [
     KINETIC_OT_create_grid,
     KINETIC_OT_create_strip,
     KINETIC_OT_duplicate_strip,
-    # Winch animation operators
     KINETIC_OT_winch_wave,
     KINETIC_OT_winch_radial,
     KINETIC_OT_winch_ramp,
     KINETIC_OT_winch_circular,
     KINETIC_OT_winch_random,
-    # Grid animation operators
     KINETIC_OT_wave_animation,
     KINETIC_OT_radial_animation,
     KINETIC_OT_ramp_animation,
@@ -2106,12 +1291,8 @@ classes = [
     KINETIC_OT_chess_animation,
     KINETIC_OT_text_animation,
     KINETIC_OT_random_animation,
-    KINETIC_OT_apply_led_texture,
-    KINETIC_OT_recalculate_bounds,
-    KINETIC_OT_download_uv_checker,
     KINETIC_OT_clear_animation,
     KINETIC_OT_clear_all,
-    # UI Panels (order matters - parent first, then children)
     KINETIC_PT_main,
     KINETIC_PT_grid,
     KINETIC_PT_strip,
@@ -2124,7 +1305,6 @@ classes = [
     KINETIC_PT_text,
     KINETIC_PT_random,
     KINETIC_PT_winch_patterns,
-    KINETIC_PT_led_textures,
     KINETIC_PT_cleanup,
 ]
 
